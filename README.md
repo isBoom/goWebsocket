@@ -1,2 +1,0 @@
-# goWebsocket
-go
