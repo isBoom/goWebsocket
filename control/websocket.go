@@ -89,7 +89,7 @@ func UserLeave(c *Client) {
 	c.Socket.Close()
 	close(c.MsgCh)
 	delete(ClientMap, c.UserInfo.Uid)
-	temp, _ := json.Marshal(MsgFromUser{Status: 100, Msg: fmt.Sprintf("%s已退出聊天室", c.UserInfo.UserName)})
+	temp, _ := json.Marshal(MsgFromUser{Status: 130, Uid: c.UserInfo.Uid, UserName: c.UserInfo.UserName})
 	Message <- temp
 	Log(fmt.Sprintf("(%d)%s退出了聊天室", c.UserInfo.Uid, c.UserInfo.UserName))
 }
