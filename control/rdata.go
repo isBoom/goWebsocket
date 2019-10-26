@@ -34,4 +34,5 @@ func SendMsg(w http.ResponseWriter, status int, msg string) error {
 110 在线用户信息
 120 谁上线了
 200 普通用户消息
+210 发送图片
 */

@@ -68,7 +68,7 @@ func RegisteUser(userName string, userPassword string, userEmail string) (int64,
 	userHeadPortrait := fmt.Sprintf("https://xxxholic.top/img/userHeadPortrait/%d.jpg", rand.Intn(13))
 	userCreateDate := fmt.Sprintf("%d-%d-%d %d:%d:%d", now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), now.Second())
 	rand.Int()
-	res, err0 := DB.Exec("insert into userInfo(userName,userEmail,userPassword,userCreateDate,userHeadPortrait) VALUES(?,?,?,?,?)", userName, userEmail, userPassword, userCreateDate, userHeadPortrait)
+	res, err0 := DB.Exec("insert into userInfo(userName,userPassword,userEmail,userCreateDate,userHeadPortrait) VALUES(?,?,?,?,?)", userName, userPassword, userEmail, userCreateDate, userHeadPortrait)
 	if err0 != nil {
 		err0 = errors.New("添加用户失败错误")
 		return 0, err0

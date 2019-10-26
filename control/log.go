@@ -9,7 +9,7 @@ import (
 
 var (
 	File *os.File
-	now  = time.Now()
+	now  time.Time
 )
 
 func init() {
@@ -23,6 +23,7 @@ func init() {
 		File.Close()
 		os.Exit(0)
 	}()
+	now = time.Now()
 	currentTime := fmt.Sprintf("%d-%d-%d", now.Year(), now.Month(), now.Day())
 	//日志文件是否存在
 	if _, err := os.Stat(fmt.Sprintf("%s.log", currentTime)); err != nil {
@@ -49,6 +50,7 @@ func init() {
 
 //记录日志
 func Log(msg string) {
+	now = time.Now()
 	data := fmt.Sprintf("%d-%d-%d-%d:%d:%d-->%s\n", now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), now.Second(), msg)
 	_, err := File.Write([]byte(data))
 	if err != nil {

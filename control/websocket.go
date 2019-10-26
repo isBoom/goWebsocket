@@ -109,11 +109,12 @@ func UserRegister(c *Client) {
 				return
 			}
 			switch msgFromUser.Status {
-			case 100:
+			case 200, 210:
 				msg := msgFromUser.Msg
-				temp, _ := json.Marshal(MsgFromUser{Status: 200, Uid: c.UserInfo.Uid, UserName: c.UserInfo.UserName, Msg: msg})
+				temp, _ := json.Marshal(MsgFromUser{Status: msgFromUser.Status, Uid: c.UserInfo.Uid, UserName: c.UserInfo.UserName, Msg: msg})
 				Log(fmt.Sprintf("(%d)%s:  %s", c.UserInfo.Uid, c.UserInfo.UserName, msg))
 				Message <- temp
+
 			}
 		}
 	}()
@@ -135,35 +136,36 @@ func Websocket(res http.ResponseWriter, req *http.Request) {
 	//验证cookie登录
 	cookieUserId, err := req.Cookie("userId")
 	cookieVerification, err1 := req.Cookie("verification")
-	person, err := model.SelectUserId(cookieUserId.Value)
-	if err != nil || err1 != nil || cookieUserId == nil || cookieVerification == nil {
+	if err != nil || err1 != nil { //没有cookie
 		temp, _ := json.Marshal(MsgFromUser{Status: 30, Msg: "请您先登录"})
 		conn.WriteMessage(websocket.TextMessage, temp)
 		conn.Close()
 		return
-	} else if fmt.Sprintf("%x%x", md5.Sum([]byte(person.UserEmail)), md5.Sum([]byte(person.UserPassword))) != cookieVerification.Value {
+	} else if person, err2 := model.SelectUserId(cookieUserId.Value); err2 != nil { //cookie不正确
+		temp, _ := json.Marshal(MsgFromUser{Status: 30, Msg: "请您先登录"})
+		conn.WriteMessage(websocket.TextMessage, temp)
+		conn.Close()
+		return
+	} else if fmt.Sprintf("%x%x", md5.Sum([]byte(person.UserEmail)), md5.Sum([]byte(person.UserPassword))) != cookieVerification.Value { //cookie不正确
 		temp, _ := json.Marshal(MsgFromUser{Status: 10, Msg: "请您重新登录"})
 		conn.WriteMessage(websocket.TextMessage, temp)
 		conn.Close()
 		return
-	} else {
-		uid, _ := strconv.Atoi(strconv.FormatInt(person.UserId, 10))
-		if ClientMap[uid] != nil {
-			temp, _ := json.Marshal(MsgFromUser{Status: 20, Msg: "该账户已登陆"})
-			conn.WriteMessage(websocket.TextMessage, temp)
-			conn.Close()
-			return
-		} else {
-			client := &Client{
-				MsgCh:  make(chan []byte),
-				Socket: conn,
-				UserInfo: UserSimpleData{
-					Uid:              uid,
-					UserName:         person.UserName,
-					UserHeadPortrait: person.UserHeadPortrait,
-				}}
-			go UserRegister(client)
-		}
+	} else if uid, _ := strconv.Atoi(strconv.FormatInt(person.UserId, 10)); ClientMap[uid] != nil { //重复登陆
+		temp, _ := json.Marshal(MsgFromUser{Status: 20, Msg: "该账户已登陆"})
+		conn.WriteMessage(websocket.TextMessage, temp)
+		conn.Close()
+		return
+	} else { //登陆成功 创建用户
+		client := &Client{
+			MsgCh:  make(chan []byte),
+			Socket: conn,
+			UserInfo: UserSimpleData{
+				Uid:              uid,
+				UserName:         person.UserName,
+				UserHeadPortrait: person.UserHeadPortrait,
+			}}
+		go UserRegister(client)
 	}
 
 }
