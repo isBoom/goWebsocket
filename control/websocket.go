@@ -32,10 +32,10 @@ type MsgFromUser struct {
 	Status   int    `json:"status"`
 	UserName string `json:"userName"`
 	Msg      string `json:"msg"`
-	//ImgData  []byte `json:"imgData"`
 }
 type MsgToUserOnlie struct {
 	Status int              `json:"status"`
+	Msg    string           `json:"msg"`
 	User   []UserSimpleData `json:"user"`
 }
 
@@ -77,8 +77,8 @@ func NewUserOnlie(c *Client) {
 	if err != nil {
 		fmt.Println("78line", err)
 	}
-	Message <- temp
 	ClientMap[c.UserInfo.Uid] = c
+	Message <- temp
 	// time.Sleep(time.Second)
 	Log(fmt.Sprintf("(%d)%s来到了聊天室", c.UserInfo.Uid, c.UserInfo.UserName))
 
@@ -105,6 +105,7 @@ func UserRegister(c *Client) {
 			err := c.Socket.ReadJSON(msgFromUser)
 			if err != nil {
 				//用户离线
+				fmt.Println(err) //-----------------
 				UserLeave(c)
 				return
 			}
@@ -114,7 +115,9 @@ func UserRegister(c *Client) {
 				temp, _ := json.Marshal(MsgFromUser{Status: msgFromUser.Status, Uid: c.UserInfo.Uid, UserName: c.UserInfo.UserName, Msg: msg})
 				Log(fmt.Sprintf("(%d)%s:  %s", c.UserInfo.Uid, c.UserInfo.UserName, msg))
 				Message <- temp
-
+			case 310:
+				//更改头像
+				ChangeUserHeadPortraitBox(c, msgFromUser)
 			}
 		}
 	}()

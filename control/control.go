@@ -2,11 +2,18 @@ package control
 
 import (
 	"crypto/md5"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log"
 	"model"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
+	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 const (
@@ -100,5 +107,50 @@ func Registe(w http.ResponseWriter, r *http.Request) {
 			Log(fmt.Sprintf("(%d)%s注册账号成功但是没有发送给他这个消息 %v", registeId, r.PostForm.Get("userName"), e))
 		}
 		Log(fmt.Sprintf("(%d)%s注册了账号", registeId, r.PostForm.Get("userName")))
+	}
+}
+func ChangeUserHeadPortraitBox(c *Client, msgFromUser *MsgFromUser) {
+	uid := c.UserInfo.Uid
+	now = time.Now()
+	nowTime := fmt.Sprintf("%d-%d-%d-%d:%d:%d", now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), now.Second())
+	filename := fmt.Sprintf("Uid%d%s.%s", uid, nowTime, msgFromUser.UserName[6:])
+	index := strings.Index(msgFromUser.Msg, ",")
+	base64Data, errDecodeString := base64.StdEncoding.DecodeString(msgFromUser.Msg[index+1:])
+	if errDecodeString != nil {
+		fmt.Println("errDecodeString", errDecodeString)
+	}
+	file, err := os.Create("/var/www/html/img/userHeadPortrait/" + filename)
+	if err != nil {
+		fmt.Println("os.Create", err)
+	}
+	defer file.Close()
+	file.Write(base64Data)
+	if errChange := model.ChangeUserHeadPortrait(uid, "https://xxxholic.top/img/userHeadPortrait/"+filename); err != nil {
+		fmt.Println("model.ChangeUserHeadPortrait", errChange)
+		temp, _ := json.Marshal(MsgFromUser{Status: 311, Msg: fmt.Sprint(errChange)})
+		if err != nil {
+			fmt.Println("129line", err)
+		}
+		c.Socket.WriteMessage(websocket.TextMessage, temp)
+		return
+	} else {
+		//广播修改头像
+		var msgToUserOnlie = &MsgToUserOnlie{
+			Status: 312,
+			Msg:    "修改了头像",
+		}
+		c.UserInfo.UserHeadPortrait = msgFromUser.Msg
+		msgToUserOnlie.User = make([]UserSimpleData, 1)
+		msgToUserOnlie.User[0] = UserSimpleData{
+			Uid:              c.UserInfo.Uid,
+			UserHeadPortrait: msgFromUser.Msg,
+		}
+		temp, err := json.Marshal(msgToUserOnlie)
+		if err != nil {
+			fmt.Println("145line", err)
+		}
+		Message <- temp
+		// time.Sleep(time.Second)
+		Log(fmt.Sprintf("(%d)%s修改了头像", c.UserInfo.Uid, c.UserInfo.UserName))
 	}
 }

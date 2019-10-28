@@ -78,11 +78,27 @@ func RegisteUser(userName string, userPassword string, userEmail string) (int64,
 		err0 = errors.New("获取用户id失败")
 		return 0, err0
 	}
-	return id, err0
+	return id, nil
 
 }
-func UserAll() ([]User, error) {
-	mods := make([]User, 0)
-	err := DB.Select(&mods, "select * from `userinfo`")
-	return mods, err
+func ChangeUserHeadPortrait(userId int, userHeadPortrait string) error {
+	mod := &User{}
+	err := DB.Get(mod, "select * from userId where userId=? limit 1", userId)
+	if err == nil {
+		err = errors.New("该用户不存在")
+		return err
+	}
+	_, err0 := DB.Exec("UPDATE userInfo SET userHeadPortrait = ? where userId=?", userHeadPortrait, userId)
+	if err0 != nil {
+		err0 = errors.New("更改头像失败")
+		return err0
+	}
+	return nil
+
 }
+
+// func UserAll() ([]User, error) {
+// 	mods := make([]User, 0)
+// 	err := DB.Select(&mods, "select * from `userinfo`")
+// 	return mods, err
+// }
