@@ -38,4 +38,6 @@ func SendMsg(w http.ResponseWriter, status int, msg string) error {
 310 更改头像
 311 修改头像失败
 312 修改图像成功(群)
+400 普通私信  401是给消息发送者的
+410 私信图片  411是给消息发送者的
 */

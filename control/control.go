@@ -113,7 +113,7 @@ func ChangeUserHeadPortraitBox(c *Client, msgFromUser *MsgFromUser) {
 	uid := c.UserInfo.Uid
 	now = time.Now()
 	nowTime := fmt.Sprintf("%d-%d-%d-%d:%d:%d", now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), now.Second())
-	filename := fmt.Sprintf("Uid%d%s.%s", uid, nowTime, msgFromUser.UserName[6:])
+	filename := fmt.Sprintf("Uid%d_%s.%s", uid, nowTime, msgFromUser.UserName[6:])
 	index := strings.Index(msgFromUser.Msg, ",")
 	base64Data, errDecodeString := base64.StdEncoding.DecodeString(msgFromUser.Msg[index+1:])
 	if errDecodeString != nil {
@@ -153,4 +153,42 @@ func ChangeUserHeadPortraitBox(c *Client, msgFromUser *MsgFromUser) {
 		// time.Sleep(time.Second)
 		Log(fmt.Sprintf("(%d)%s修改了头像", c.UserInfo.Uid, c.UserInfo.UserName))
 	}
+}
+func PrivateChat(c *Client, msgFromUser *MsgFromUser) {
+	fromId := c.UserInfo.Uid
+	toId := msgFromUser.Uid
+
+	if ClientMap[toId] == nil {
+		//不在线 日后再写
+		temp, _ := json.Marshal(MsgFromUser{Status: 0, Msg: "对方不在线"})
+		c.Socket.WriteMessage(websocket.TextMessage, temp)
+		return
+	} else {
+		if _, err := model.SelectUserId(strconv.Itoa(toId)); err != nil { //cookie不正确
+			fmt.Println(err)
+			temp, _ := json.Marshal(MsgFromUser{Status: 0, Msg: "可能没这个人"})
+			c.Socket.WriteMessage(websocket.TextMessage, temp)
+			return
+		} else {
+			msg := msgFromUser.Msg
+			//接收者
+			temp, err := json.Marshal(MsgFromUser{Status: msgFromUser.Status, Uid: fromId, Msg: msg})
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			if err := ClientMap[toId].Socket.WriteMessage(websocket.TextMessage, temp); err != nil {
+				fmt.Println("172lineClientMap[toId].Socket.WriteMessageErr", err)
+				return
+			}
+			//发送者
+			temp, _ = json.Marshal(MsgFromUser{Status: (msgFromUser.Status + 1), Uid: toId, Msg: msg})
+			if err := c.Socket.WriteMessage(websocket.TextMessage, temp); err != nil {
+				fmt.Println("180c.Socket.WriteMessageErr", err)
+				return
+			}
+			Log(fmt.Sprintf("(%d)%s对(%d)%s说:%s", fromId, c.UserInfo.UserName, toId, ClientMap[toId].UserInfo.UserName, msg))
+		}
+	}
+
 }

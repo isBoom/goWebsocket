@@ -110,7 +110,7 @@ func UserRegister(c *Client) {
 				return
 			}
 			switch msgFromUser.Status {
-			case 200, 210:
+			case 200, 210: //普通群聊 文字/图片
 				msg := msgFromUser.Msg
 				temp, _ := json.Marshal(MsgFromUser{Status: msgFromUser.Status, Uid: c.UserInfo.Uid, UserName: c.UserInfo.UserName, Msg: msg})
 				Log(fmt.Sprintf("(%d)%s:  %s", c.UserInfo.Uid, c.UserInfo.UserName, msg))
@@ -118,6 +118,8 @@ func UserRegister(c *Client) {
 			case 310:
 				//更改头像
 				ChangeUserHeadPortraitBox(c, msgFromUser)
+			case 400, 410: //私聊 文字/图片
+				PrivateChat(c, msgFromUser)
 			}
 		}
 	}()
