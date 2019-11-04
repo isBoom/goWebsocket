@@ -56,7 +56,7 @@ func SendUserOnlieData(c *Client) {
 	}
 	temp, err := json.Marshal(msgToUserOnlie)
 	if err != nil {
-		fmt.Println("54line", err)
+		model.Log.Warning("json.Marshal %v", err)
 	}
 	c.Socket.WriteMessage(websocket.TextMessage, temp)
 
@@ -75,12 +75,12 @@ func NewUserOnlie(c *Client) {
 	}
 	temp, err := json.Marshal(msgToUserOnlie)
 	if err != nil {
-		fmt.Println("78line", err)
+		model.Log.Warning("json.Marshal %v", err)
 	}
 	ClientMap[c.UserInfo.Uid] = c
 	Message <- temp
 	// time.Sleep(time.Second)
-	Log(fmt.Sprintf("(%d)%s来到了聊天室", c.UserInfo.Uid, c.UserInfo.UserName))
+	model.Log.Info("(%d)%s来到了聊天室", c.UserInfo.Uid, c.UserInfo.UserName)
 
 }
 
@@ -91,7 +91,7 @@ func UserLeave(c *Client) {
 	delete(ClientMap, c.UserInfo.Uid)
 	temp, _ := json.Marshal(MsgFromUser{Status: 130, Uid: c.UserInfo.Uid, UserName: c.UserInfo.UserName})
 	Message <- temp
-	Log(fmt.Sprintf("(%d)%s退出了聊天室", c.UserInfo.Uid, c.UserInfo.UserName))
+	model.Log.Info("(%d)%s退出了聊天室", c.UserInfo.Uid, c.UserInfo.UserName)
 }
 func UserRegister(c *Client) {
 	//向其他用户广播该用户上线
@@ -105,7 +105,6 @@ func UserRegister(c *Client) {
 			err := c.Socket.ReadJSON(msgFromUser)
 			if err != nil {
 				//用户离线
-				fmt.Println(err) //-----------------
 				UserLeave(c)
 				return
 			}
@@ -113,7 +112,7 @@ func UserRegister(c *Client) {
 			case 200, 210: //普通群聊 文字/图片
 				msg := msgFromUser.Msg
 				temp, _ := json.Marshal(MsgFromUser{Status: msgFromUser.Status, Uid: c.UserInfo.Uid, UserName: c.UserInfo.UserName, Msg: msg})
-				Log(fmt.Sprintf("(%d)%s:  %s", c.UserInfo.Uid, c.UserInfo.UserName, msg))
+				model.Log.Info("(%d)%s:  %s", c.UserInfo.Uid, c.UserInfo.UserName, msg)
 				Message <- temp
 			case 310:
 				//更改头像

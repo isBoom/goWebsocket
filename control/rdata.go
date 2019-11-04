@@ -2,7 +2,7 @@ package control
 
 import (
 	"encoding/json"
-	"errors"
+	"model"
 	"net/http"
 )
 
@@ -18,7 +18,7 @@ func SendMsg(w http.ResponseWriter, status int, msg string) error {
 	}
 	temp, err := json.Marshal(str)
 	if err != nil {
-		err = errors.New("json化失败")
+		model.Log.Warning("json.Marshal %v", err)
 		return err
 	}
 	w.Write(temp)
