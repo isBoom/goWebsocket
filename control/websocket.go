@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"model"
 	"net/http"
-	"strconv"
 
 	"github.com/gorilla/websocket"
 )
@@ -37,6 +36,11 @@ type MsgToUserOnlie struct {
 	Status int              `json:"status"`
 	Msg    string           `json:"msg"`
 	User   []UserSimpleData `json:"user"`
+}
+type FriendsrRquestToUser struct {
+	Status         int                    `json:"status"`
+	Msg            string                 `json:"msg"`
+	FriendsrRquest []model.FriendsrRquest `json:"friendsrRquest"`
 }
 
 //向新登录用户发送在线用户信息
@@ -93,11 +97,27 @@ func UserLeave(c *Client) {
 	Message <- temp
 	model.Log.Info("(%d)%s退出了聊天室", c.UserInfo.Uid, c.UserInfo.UserName)
 }
+
+//发送请求
+func SendFriendsrRquest(c *Client) {
+	mod, err := model.SelectFriendsrRquest(c.UserInfo.Uid)
+	if err != nil {
+		model.Log.Warning("model.SelectFriendsrRquest%v", err)
+	}
+	temp, _ := json.Marshal(FriendsrRquestToUser{Status: 520, FriendsrRquest: mod})
+	c.Socket.WriteMessage(websocket.TextMessage, temp)
+}
 func UserRegister(c *Client) {
 	//向其他用户广播该用户上线
 	NewUserOnlie(c)
 	//向该用户发送在线用户信息
 	SendUserOnlieData(c)
+	//向该用户发送在好友列表
+
+	//向该用户发送所有好友请求
+	SendFriendsrRquest(c)
+	//向该用户发送所有离线消息列表
+
 	//read
 	go func() {
 		msgFromUser := &MsgFromUser{}
@@ -119,6 +139,8 @@ func UserRegister(c *Client) {
 				ChangeUserHeadPortraitBox(c, msgFromUser)
 			case 400, 410: //私聊 文字/图片
 				PrivateChat(c, msgFromUser)
+			case 500: //请求添加好友
+				AddFriend(c, msgFromUser)
 			}
 		}
 	}()
@@ -155,7 +177,7 @@ func Websocket(res http.ResponseWriter, req *http.Request) {
 		conn.WriteMessage(websocket.TextMessage, temp)
 		conn.Close()
 		return
-	} else if uid, _ := strconv.Atoi(strconv.FormatInt(person.UserId, 10)); ClientMap[uid] != nil { //重复登陆
+	} else if ClientMap[person.UserId] != nil { //重复登陆
 		temp, _ := json.Marshal(MsgFromUser{Status: 20, Msg: "该账户已登陆"})
 		conn.WriteMessage(websocket.TextMessage, temp)
 		conn.Close()
@@ -165,7 +187,7 @@ func Websocket(res http.ResponseWriter, req *http.Request) {
 			MsgCh:  make(chan []byte),
 			Socket: conn,
 			UserInfo: UserSimpleData{
-				Uid:              uid,
+				Uid:              person.UserId,
 				UserName:         person.UserName,
 				UserHeadPortrait: person.UserHeadPortrait,
 			}}

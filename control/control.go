@@ -19,6 +19,7 @@ const (
 	xx = "fsjiamkfasifjaiodmasdkaso"
 )
 
+//登录
 func Login(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", r.Header.Get("Origin"))
@@ -35,13 +36,9 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	} else {
 		//该用户是否在线
-		uid, errAtoi := strconv.Atoi(strconv.FormatInt(loginInfo.UserId, 10))
-		if errAtoi != nil {
-			model.Log.Warning("strconv.Atoi%v", errAtoi)
-		}
-		if ClientMap[uid] != nil {
+		if ClientMap[loginInfo.UserId] != nil {
 			SendMsg(w, 20, "该账户已登陆")
-			model.Log.Info("账号[%d][%s]已登录,有人挤他", uid, r.PostForm.Get("userName"))
+			model.Log.Info("账号[%d][%s]已登录,有人挤他", loginInfo.UserId, r.PostForm.Get("userName"))
 			return
 		} else {
 			//不在线则允许登录并设置cookie
@@ -64,14 +61,16 @@ func Login(w http.ResponseWriter, r *http.Request) {
 			w.Header().Add("Set-cookie", c2.String())
 			//发送成功信息
 			if e := SendMsg(w, 100, "登陆成功"); e != nil {
-				model.Log.Warning("(%d)%s登陆成功但是消息没有传达到  %v", uid, r.PostForm.Get("userName"), e)
+				model.Log.Warning("(%d)%s登陆成功但是消息没有传达到  %v", loginInfo.UserId, r.PostForm.Get("userName"), e)
 			} else {
-				model.Log.Info("(%d)%s登陆成功", uid, r.PostForm.Get("userName"))
+				model.Log.Info("(%d)%s登陆成功", loginInfo.UserId, r.PostForm.Get("userName"))
 			}
 		}
 	}
 
 }
+
+//注册
 func Registe(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", r.Header.Get("Origin"))
@@ -109,6 +108,8 @@ func Registe(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+
+//改头
 func ChangeUserHeadPortraitBox(c *Client, msgFromUser *MsgFromUser) {
 	uid := c.UserInfo.Uid
 	now := time.Now()
@@ -153,6 +154,8 @@ func ChangeUserHeadPortraitBox(c *Client, msgFromUser *MsgFromUser) {
 		model.Log.Info("[%d][%s]修改了头像", c.UserInfo.Uid, c.UserInfo.UserName)
 	}
 }
+
+//私聊
 func PrivateChat(c *Client, msgFromUser *MsgFromUser) {
 	fromId := c.UserInfo.Uid
 	toId := msgFromUser.Uid
@@ -187,5 +190,45 @@ func PrivateChat(c *Client, msgFromUser *MsgFromUser) {
 			}
 			model.Log.Info("[%d][%s]对[%d][%s]说[%s]", fromId, c.UserInfo.UserName, toId, ClientMap[toId].UserInfo.UserName, msg)
 		}
+	}
+}
+
+//添加好友
+func AddFriend(c *Client, msgFromUser *MsgFromUser) {
+	user, err := model.SelectUser(msgFromUser.Msg)
+	//莫得这个人
+	if err != nil {
+		temp, _ := json.Marshal(MsgFromUser{Status: 510, Msg: fmt.Sprintf("没有[%s]这个人啊", msgFromUser.Msg)})
+		if err := c.Socket.WriteMessage(websocket.TextMessage, temp); err != nil {
+			model.Log.Warning("c.Socket.WriteMessageErr", err)
+			return
+		}
+		model.Log.Info("[%d][%s]向[%s]发送好友请求，但是查无此人", c.UserInfo.Uid, c.UserInfo.UserName, msgFromUser.Msg)
+		return
+	} else {
+		//有了有了
+		if c.UserInfo.Uid == user.UserId { //自己加自己
+			temp, _ := json.Marshal(MsgFromUser{Status: 500, Msg: "咱能不加自己吗"})
+			if err := c.Socket.WriteMessage(websocket.TextMessage, temp); err != nil {
+				model.Log.Warning("c.Socket.WriteMessageErr", err)
+				return
+			}
+			model.Log.Info("[%d][%s]非加自己好友", c.UserInfo.Uid, c.UserInfo.UserName)
+		} else if err := model.InsertFeiendsRequest(c.UserInfo.Uid, user.UserId); err != nil {
+			model.Log.Warning("InsertFeiendsRequest", err)
+			return
+		} else {
+			temp, _ := json.Marshal(MsgFromUser{Status: 500, Msg: fmt.Sprintf("已向[%s]发送好友请求", msgFromUser.Msg)})
+			if err := c.Socket.WriteMessage(websocket.TextMessage, temp); err != nil {
+				model.Log.Warning("c.Socket.WriteMessageErr", err)
+				return
+			}
+			model.Log.Info("[%d][%s]向[%d][%s]发送了好友请求", c.UserInfo.Uid, c.UserInfo.UserName, user.UserId, user.UserName)
+			//如果此人在线立即发送
+			if ClientMap[user.UserId] != nil {
+				SendFriendsrRquest(ClientMap[user.UserId])
+			}
+		}
+
 	}
 }

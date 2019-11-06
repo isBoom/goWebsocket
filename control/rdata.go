@@ -40,4 +40,7 @@ func SendMsg(w http.ResponseWriter, status int, msg string) error {
 312 修改图像成功(群)
 400 普通私信  401是给消息发送者的
 410 私信图片  411是给消息发送者的
+500 添加好友
+510 查无此人
+520 有人添加你为好友
 */
