@@ -73,6 +73,7 @@ func SelectUser(msg string) (*User, error) {
 	var err error
 	mod := &User{}
 	if err = DB.Get(mod, "select * from userInfo where userName=? or userEmail=? limit 1", msg, msg); err != nil {
+		Log.Debug("%v", err)
 		return mod, errors.New("该用户不存在")
 	}
 	return mod, nil
@@ -164,6 +165,11 @@ func AddFriendList(smallId, bigId int) error {
 	return nil
 }
 
-// func SelectFriends(id int) ([]FriendsInfo, error) {
-
-// }
+func SelectFriendslist(id int) ([]FriendsInfo, error) {
+	var err error
+	mod := make([]FriendsInfo, 0)
+	if err = DB.Select(&mod, "select userInfo.userId,userInfo.userName from friends left join userInfo on (friends.friendA=userInfo.userId or friends.friendB=userInfo.userId)  where friends.friendA=? or friends.friendB=?", id, id); err != nil {
+		return nil, err
+	}
+	return mod, nil
+}

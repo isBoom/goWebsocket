@@ -44,7 +44,7 @@ func SendMsg(w http.ResponseWriter, status int, msg string) error {
 510 查无此人
 520 有人添加你为好友
 530 查看自己的好友请求
-540 同意
+540 所有在线好友列表
 550 拒绝
 560 添加成功
 570 添加失败

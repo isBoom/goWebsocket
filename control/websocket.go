@@ -42,6 +42,11 @@ type FriendsRequestToUser struct {
 	Msg            string              `json:"msg"`
 	FriendsRequest []model.FriendsInfo `json:"friendsRequest"`
 }
+type FriendsListToUser struct {
+	Status int                 `json:"status"`
+	Msg    string              `json:"msg"`
+	User   []model.FriendsInfo `json:"user"`
+}
 
 //向新登录用户发送在线用户信息
 func SendUserOnlieData(c *Client) {
@@ -100,6 +105,25 @@ func UserLeave(c *Client) {
 	model.Log.Info("(%d)%s退出了聊天室", c.UserInfo.Uid, c.UserInfo.UserName)
 }
 
+//发送所有好友列表
+func SendFriendsList(c *Client) {
+	mod, err := model.SelectFriendslist(c.UserInfo.Uid)
+	if err != nil {
+		model.Log.Warning("model.SelectFriendslist %v", err)
+		return
+	} else if len(mod) != 0 {
+		friendsListToUser := &FriendsListToUser{
+			Status: 540,
+		}
+		friendsListToUser.User = make([]model.FriendsInfo, 0)
+		for _, data := range mod {
+			friendsListToUser.User = append(friendsListToUser.User, data)
+		}
+		temp, _ := json.Marshal(friendsListToUser)
+		c.Socket.WriteMessage(websocket.TextMessage, temp)
+	}
+}
+
 //发送请求
 func SendFriendsRequest(c *Client) {
 	mod, err := model.SelectFriendsRequest(c.UserInfo.Uid)
@@ -114,7 +138,7 @@ func SendFriendsRequest(c *Client) {
 		for _, data := range mod {
 			friendsRequestToUser.FriendsRequest = append(friendsRequestToUser.FriendsRequest, data)
 		}
-		temp, _ := json.Marshal(FriendsRequestToUser{Status: 520, FriendsRequest: mod})
+		temp, _ := json.Marshal(friendsRequestToUser)
 		c.Socket.WriteMessage(websocket.TextMessage, temp)
 	}
 }
@@ -124,7 +148,7 @@ func UserRegister(c *Client) {
 	//向该用户发送在线用户信息
 	SendUserOnlieData(c)
 	//向该用户发送在好友列表
-
+	SendFriendsList(c)
 	//向该用户发送所有好友请求
 	SendFriendsRequest(c)
 	//向该用户发送所有离线消息列表

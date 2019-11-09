@@ -262,12 +262,17 @@ func AddFriendList(c *Client, msgFromUser *MsgFromUser) {
 	} else {
 		// c.UserInfo.Uid是接收方
 		// msgFromUser.Uid是发送方
+		var temp []byte
+		var err error
 		var msgToUserOnlie = &MsgToUserOnlie{
 			Status: 560,
 		}
-		from, _ := model.SelectUser(string(msgFromUser.Uid))
-		var temp []byte
-		var err error
+		from, err := model.SelectUserId(strconv.Itoa(msgFromUser.Uid))
+		if err != nil {
+			model.Log.Debug("%v", err)
+			return
+		}
+
 		//向接受方发送
 		msgToUserOnlie.User = make([]UserSimpleData, 1)
 		msgToUserOnlie.User[0] = UserSimpleData{
@@ -275,12 +280,10 @@ func AddFriendList(c *Client, msgFromUser *MsgFromUser) {
 			UserHeadPortrait: from.UserHeadPortrait,
 			UserName:         from.UserName,
 		}
-		temp, err = json.Marshal(msgToUserOnlie)
-		if err != nil {
-			if err = c.Socket.WriteMessage(websocket.TextMessage, temp); err != nil {
-				model.Log.Warning("c.Socket.WriteMessageErr", err)
-				return
-			}
+		temp, _ = json.Marshal(msgToUserOnlie)
+		if err = c.Socket.WriteMessage(websocket.TextMessage, temp); err != nil {
+			model.Log.Warning("c.Socket.WriteMessageErr", err)
+			return
 		}
 		//如果发送方在线 也发送
 		if ClientMap[msgFromUser.Uid] != nil {
@@ -289,12 +292,10 @@ func AddFriendList(c *Client, msgFromUser *MsgFromUser) {
 				UserHeadPortrait: c.UserInfo.UserHeadPortrait,
 				UserName:         c.UserInfo.UserName,
 			}
-			temp, err = json.Marshal(msgToUserOnlie)
-			if err != nil {
-				if err := ClientMap[msgFromUser.Uid].Socket.WriteMessage(websocket.TextMessage, temp); err != nil {
-					model.Log.Warning("c.Socket.WriteMessageErr", err)
-					return
-				}
+			temp, _ = json.Marshal(msgToUserOnlie)
+			if err := ClientMap[msgFromUser.Uid].Socket.WriteMessage(websocket.TextMessage, temp); err != nil {
+				model.Log.Warning("c.Socket.WriteMessageErr", err)
+				return
 			}
 		}
 		model.Log.Info("[%d][%s]同意了[%d][%s]的好友请求", c.UserInfo.Uid, c.UserInfo.UserName, from.UserId, from.UserName)
