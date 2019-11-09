@@ -33,18 +33,18 @@ type User struct {
 	UserCreateDate   string `json:"userCreateDate" db:"userCreateDate"`
 	UserHeadPortrait string `json:"userHeadPortrait" db:"userHeadPortrait"`
 }
-type FriendsrRquest struct {
-	Id     int `json:"id" db:"id"`
-	FromId int `json:"fromId" db:"fromId"`
-	ToId   int `json:"toId" db:"toId"`
+type FriendsInfo struct {
+	UserId           int    `json:"userId" db:"userId"`
+	UserName         string `json:"userName" db:"userName"`
+	UserHeadPortrait string `json:"userHeadPortrait" db:"userHeadPortrait"`
 }
 type OfflineMessage struct {
 	Id int
 }
-type Friends struct {
-	Id      int
-	FriendA int
-	FriendB int
+type FriendsList struct {
+	Id      int `json:"id" db:"id"`
+	FriendA int `json:"friendA" db:"friendA"`
+	FriendB int `json:"friendB" db:"friendB"`
 }
 
 func LoginInfo(userName string, userPassword string) (*User, error) {
@@ -107,7 +107,7 @@ func RegisteUser(userName string, userPassword string, userEmail string) (int, e
 func ChangeUserHeadPortrait(userId int, userHeadPortrait string) error {
 	var err error
 	mod := &User{}
-	if err = DB.Get(mod, "select * from userId where userId=? limit 1", userId); err != nil {
+	if err = DB.Get(mod, "select * from userInfo where userId=? limit 1", userId); err != nil {
 		err = errors.New("该用户不存在")
 		return err
 	}
@@ -120,22 +120,50 @@ func ChangeUserHeadPortrait(userId int, userHeadPortrait string) error {
 }
 func InsertFeiendsRequest(fromId, toId int) error {
 	var err error
-	mod := &FriendsrRquest{}
-	if err = DB.Get(mod, "select * from friendsrRquest where fromId=? and toId=? limit 1", fromId, toId); err == nil {
+	mod := &FriendsInfo{}
+	if err = DB.Get(mod, "select fromId as userId from friendsRequest where fromId=? and toId=? limit 1", fromId, toId); err == nil {
 		//该请求数据库里已存在 不重复添加 但依旧向发起人回复发送成功
 		return nil
-	} else if _, err = DB.Exec("insert into friendsrRquest(fromId,toId) VALUES(?,?)", fromId, toId); err != nil {
+	} else if _, err = DB.Exec("insert into friendsRequest(fromId,toId) VALUES(?,?)", fromId, toId); err != nil {
 		return err
 	}
 	return nil
 }
-func SelectFriendsrRquest(id int) ([]FriendsrRquest, error) {
+func SelectFriendsRequest(id int) ([]FriendsInfo, error) {
 	var err error
-	mod := make([]FriendsrRquest, 0)
-	if err = DB.Select(&mod, "select fromId,toId from friendsrRquest where toId=?", id); err != nil {
+	mod := make([]FriendsInfo, 0)
+	if err = DB.Select(&mod, "select userInfo.userId,userInfo.userName from friendsRequest left join userInfo on friendsRequest.fromId=userInfo.userId  where friendsRequest.toId=?", id); err != nil {
 		return nil, err
-	} else if len(mod) == 0 {
-		return nil, fmt.Errorf("莫得好友请求")
 	}
 	return mod, nil
 }
+func DelFriendsRequest(fromId, toId int) {
+	DB.Exec("delete from friendsRequest where fromId = ? and toId = ? ", fromId, toId)
+}
+func IsFriend(fromId, toId int) bool {
+	mod := make([]FriendsList, 0)
+	if fromId > toId {
+		fromId, toId = toId, fromId
+	}
+	if err := DB.Select(&mod, "select * from friends where friendA=? and friendB=?", fromId, toId); err != nil {
+		Log.Debug("%v", err)
+		return false
+	} else if len(mod) == 0 {
+		return false
+	}
+	return true
+}
+func AddFriendList(smallId, bigId int) error {
+	var err error
+	if smallId > bigId {
+		smallId, bigId = bigId, smallId
+	}
+	if _, err = DB.Exec("insert into friends(friendA,friendB) VALUES(?,?)", smallId, bigId); err != nil {
+		return err
+	}
+	return nil
+}
+
+// func SelectFriends(id int) ([]FriendsInfo, error) {
+
+// }

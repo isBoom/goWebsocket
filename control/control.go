@@ -194,7 +194,7 @@ func PrivateChat(c *Client, msgFromUser *MsgFromUser) {
 }
 
 //添加好友
-func AddFriend(c *Client, msgFromUser *MsgFromUser) {
+func AddFriendRquest(c *Client, msgFromUser *MsgFromUser) {
 	user, err := model.SelectUser(msgFromUser.Msg)
 	//莫得这个人
 	if err != nil {
@@ -207,6 +207,7 @@ func AddFriend(c *Client, msgFromUser *MsgFromUser) {
 		return
 	} else {
 		//有了有了
+		//-------------- 重复添加
 		if c.UserInfo.Uid == user.UserId { //自己加自己
 			temp, _ := json.Marshal(MsgFromUser{Status: 500, Msg: "咱能不加自己吗"})
 			if err := c.Socket.WriteMessage(websocket.TextMessage, temp); err != nil {
@@ -214,7 +215,14 @@ func AddFriend(c *Client, msgFromUser *MsgFromUser) {
 				return
 			}
 			model.Log.Info("[%d][%s]非加自己好友", c.UserInfo.Uid, c.UserInfo.UserName)
-		} else if err := model.InsertFeiendsRequest(c.UserInfo.Uid, user.UserId); err != nil {
+		} else if model.IsFriend(c.UserInfo.Uid, user.UserId) { //本来就是好友
+			temp, _ := json.Marshal(MsgFromUser{Status: 580, Msg: "他已经是你的好友啦，请勿重复添加"})
+			if err := c.Socket.WriteMessage(websocket.TextMessage, temp); err != nil {
+				model.Log.Warning("c.Socket.WriteMessageErr", err)
+				return
+			}
+			model.Log.Info("[%d][%s]向[%d][%s]发送了重复的好友请求,因为他们本来就是好友", c.UserInfo.Uid, c.UserInfo.UserName, user.UserId, user.UserName)
+		} else if err := model.InsertFeiendsRequest(c.UserInfo.Uid, user.UserId); err != nil { //存储好友请求
 			model.Log.Warning("InsertFeiendsRequest", err)
 			return
 		} else {
@@ -226,9 +234,70 @@ func AddFriend(c *Client, msgFromUser *MsgFromUser) {
 			model.Log.Info("[%d][%s]向[%d][%s]发送了好友请求", c.UserInfo.Uid, c.UserInfo.UserName, user.UserId, user.UserName)
 			//如果此人在线立即发送
 			if ClientMap[user.UserId] != nil {
-				SendFriendsrRquest(ClientMap[user.UserId])
+				SendFriendsRequest(ClientMap[user.UserId])
 			}
 		}
 
 	}
+}
+
+//从数据库删除此请求
+func DelFriendsRequest(c *Client, msgFromUser *MsgFromUser) {
+	model.DelFriendsRequest(msgFromUser.Uid, c.UserInfo.Uid)
+}
+
+//添加好友
+func AddFriendList(c *Client, msgFromUser *MsgFromUser) {
+	//先删库
+	model.DelFriendsRequest(msgFromUser.Uid, c.UserInfo.Uid)
+	//好友数据库小id在前
+	if err := model.AddFriendList(msgFromUser.Uid, c.UserInfo.Uid); err != nil {
+		//添加异常
+		temp, _ := json.Marshal(MsgFromUser{Status: 570, Msg: fmt.Sprintf("添加好友时遇到了异常")})
+		if err := c.Socket.WriteMessage(websocket.TextMessage, temp); err != nil {
+			model.Log.Warning("c.Socket.WriteMessageErr", err)
+			return
+		}
+		model.Log.Warning("添加好友时遇到了异常 %v", err)
+	} else {
+		// c.UserInfo.Uid是接收方
+		// msgFromUser.Uid是发送方
+		var msgToUserOnlie = &MsgToUserOnlie{
+			Status: 560,
+		}
+		from, _ := model.SelectUser(string(msgFromUser.Uid))
+		var temp []byte
+		var err error
+		//向接受方发送
+		msgToUserOnlie.User = make([]UserSimpleData, 1)
+		msgToUserOnlie.User[0] = UserSimpleData{
+			Uid:              from.UserId,
+			UserHeadPortrait: from.UserHeadPortrait,
+			UserName:         from.UserName,
+		}
+		temp, err = json.Marshal(msgToUserOnlie)
+		if err != nil {
+			if err = c.Socket.WriteMessage(websocket.TextMessage, temp); err != nil {
+				model.Log.Warning("c.Socket.WriteMessageErr", err)
+				return
+			}
+		}
+		//如果发送方在线 也发送
+		if ClientMap[msgFromUser.Uid] != nil {
+			msgToUserOnlie.User[0] = UserSimpleData{
+				Uid:              c.UserInfo.Uid,
+				UserHeadPortrait: c.UserInfo.UserHeadPortrait,
+				UserName:         c.UserInfo.UserName,
+			}
+			temp, err = json.Marshal(msgToUserOnlie)
+			if err != nil {
+				if err := ClientMap[msgFromUser.Uid].Socket.WriteMessage(websocket.TextMessage, temp); err != nil {
+					model.Log.Warning("c.Socket.WriteMessageErr", err)
+					return
+				}
+			}
+		}
+		model.Log.Info("[%d][%s]同意了[%d][%s]的好友请求", c.UserInfo.Uid, c.UserInfo.UserName, from.UserId, from.UserName)
+	}
+
 }

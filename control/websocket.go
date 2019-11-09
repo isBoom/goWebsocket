@@ -37,10 +37,10 @@ type MsgToUserOnlie struct {
 	Msg    string           `json:"msg"`
 	User   []UserSimpleData `json:"user"`
 }
-type FriendsrRquestToUser struct {
-	Status         int                    `json:"status"`
-	Msg            string                 `json:"msg"`
-	FriendsrRquest []model.FriendsrRquest `json:"friendsrRquest"`
+type FriendsRequestToUser struct {
+	Status         int                 `json:"status"`
+	Msg            string              `json:"msg"`
+	FriendsRequest []model.FriendsInfo `json:"friendsRequest"`
 }
 
 //向新登录用户发送在线用户信息
@@ -61,6 +61,7 @@ func SendUserOnlieData(c *Client) {
 	temp, err := json.Marshal(msgToUserOnlie)
 	if err != nil {
 		model.Log.Warning("json.Marshal %v", err)
+		return
 	}
 	c.Socket.WriteMessage(websocket.TextMessage, temp)
 
@@ -80,6 +81,7 @@ func NewUserOnlie(c *Client) {
 	temp, err := json.Marshal(msgToUserOnlie)
 	if err != nil {
 		model.Log.Warning("json.Marshal %v", err)
+		return
 	}
 	ClientMap[c.UserInfo.Uid] = c
 	Message <- temp
@@ -99,13 +101,22 @@ func UserLeave(c *Client) {
 }
 
 //发送请求
-func SendFriendsrRquest(c *Client) {
-	mod, err := model.SelectFriendsrRquest(c.UserInfo.Uid)
+func SendFriendsRequest(c *Client) {
+	mod, err := model.SelectFriendsRequest(c.UserInfo.Uid)
 	if err != nil {
-		model.Log.Warning("model.SelectFriendsrRquest%v", err)
+		model.Log.Warning("model.SelectFriendsRequest %v", err)
+		return
+	} else if len(mod) != 0 {
+		friendsRequestToUser := &FriendsRequestToUser{
+			Status: 520,
+		}
+		friendsRequestToUser.FriendsRequest = make([]model.FriendsInfo, 0)
+		for _, data := range mod {
+			friendsRequestToUser.FriendsRequest = append(friendsRequestToUser.FriendsRequest, data)
+		}
+		temp, _ := json.Marshal(FriendsRequestToUser{Status: 520, FriendsRequest: mod})
+		c.Socket.WriteMessage(websocket.TextMessage, temp)
 	}
-	temp, _ := json.Marshal(FriendsrRquestToUser{Status: 520, FriendsrRquest: mod})
-	c.Socket.WriteMessage(websocket.TextMessage, temp)
 }
 func UserRegister(c *Client) {
 	//向其他用户广播该用户上线
@@ -115,7 +126,7 @@ func UserRegister(c *Client) {
 	//向该用户发送在好友列表
 
 	//向该用户发送所有好友请求
-	SendFriendsrRquest(c)
+	SendFriendsRequest(c)
 	//向该用户发送所有离线消息列表
 
 	//read
@@ -134,13 +145,24 @@ func UserRegister(c *Client) {
 				temp, _ := json.Marshal(MsgFromUser{Status: msgFromUser.Status, Uid: c.UserInfo.Uid, UserName: c.UserInfo.UserName, Msg: msg})
 				model.Log.Info("(%d)%s:  %s", c.UserInfo.Uid, c.UserInfo.UserName, msg)
 				Message <- temp
+			//更改头像
 			case 310:
-				//更改头像
 				ChangeUserHeadPortraitBox(c, msgFromUser)
-			case 400, 410: //私聊 文字/图片
+			//私聊 文字/图片
+			case 400, 410:
 				PrivateChat(c, msgFromUser)
-			case 500: //请求添加好友
-				AddFriend(c, msgFromUser)
+			//请求添加好友
+			case 500:
+				AddFriendRquest(c, msgFromUser)
+			//查看自己的好友请求
+			case 530:
+				SendFriendsRequest(c)
+			//同意加好友
+			case 540:
+				AddFriendList(c, msgFromUser)
+			//拒绝好友关系
+			case 550:
+				DelFriendsRequest(c, msgFromUser)
 			}
 		}
 	}()
