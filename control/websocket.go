@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"model"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -124,6 +125,36 @@ func SendFriendsList(c *Client) {
 	}
 }
 
+//发送离线消息
+func SendOfflineMessage(c *Client) {
+	mod, err := model.SelectOfflineMessage(c.UserInfo.Uid)
+	if err != nil {
+		model.Log.Warning("model.SelectOfflineMessage %v", err)
+		return
+	} else if len(mod) != 0 {
+		for _, data := range mod {
+			if data.FromId == c.UserInfo.Uid {
+				temp, _ := json.Marshal(MsgFromUser{Status: data.Status + 1, Uid: data.ToId, Msg: data.Msg})
+				if err := c.Socket.WriteMessage(websocket.TextMessage, temp); err != nil {
+					model.Log.Warning("c.Socket.WriteMessageErr", err)
+					return
+				}
+			} else if data.ToId == c.UserInfo.Uid {
+				//接收者
+				temp, _ := json.Marshal(MsgFromUser{Status: data.Status, Uid: data.FromId, Msg: data.Msg})
+				if err := c.Socket.WriteMessage(websocket.TextMessage, temp); err != nil {
+					model.Log.Warning("c.Socket.WriteMessage %v", err)
+					return
+				}
+			}
+		}
+	}
+	//把离线消息置为已读
+	if err := model.SetHasRead(c.UserInfo.Uid); err != nil {
+		model.Log.Warning("mode.SetHasRead %v", err)
+	}
+}
+
 //发送请求
 func SendFriendsRequest(c *Client) {
 	mod, err := model.SelectFriendsRequest(c.UserInfo.Uid)
@@ -151,8 +182,11 @@ func UserRegister(c *Client) {
 	SendFriendsList(c)
 	//向该用户发送所有好友请求
 	SendFriendsRequest(c)
-	//向该用户发送所有离线消息列表
-
+	//两秒后向该用户发送所有离线消息列表 要不然前台渲染不完头像 出现头像不显示bug
+	go func() {
+		time.Sleep(time.Second * 2)
+		SendOfflineMessage(c)
+	}()
 	//read
 	go func() {
 		msgFromUser := &MsgFromUser{}

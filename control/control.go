@@ -19,6 +19,10 @@ const (
 	xx = "fsjiamkfasifjaiodmasdkaso"
 )
 
+var (
+	fs = make(map[int]map[int]int)
+)
+
 //登录
 func Login(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -159,38 +163,92 @@ func ChangeUserHeadPortraitBox(c *Client, msgFromUser *MsgFromUser) {
 func PrivateChat(c *Client, msgFromUser *MsgFromUser) {
 	fromId := c.UserInfo.Uid
 	toId := msgFromUser.Uid
-	if ClientMap[toId] == nil {
-		//不在线 日后再写
-		temp, _ := json.Marshal(MsgFromUser{Status: 0, Msg: "对方不在线"})
+	msg := msgFromUser.Msg
+	status := msgFromUser.Status
+	//存储离线消息用
+	tempSaveFunc := func(isRead int) {
+		if err := model.SaveOfflineMessage(fromId, toId, status, msg, isRead); err != nil {
+			temp, _ := json.Marshal(MsgFromUser{Status: 0, Msg: "发送离线消息失败"})
+			model.Log.Warning("发送离线消息失败 %v", err)
+			c.Socket.WriteMessage(websocket.TextMessage, temp)
+			return
+		}
+	}
+	//向接收者发送在线消息
+	tempSendToFunc := func() {
+		//接收者
+		temp, _ := json.Marshal(MsgFromUser{Status: status, Uid: fromId, Msg: msg})
+		if err := ClientMap[toId].Socket.WriteMessage(websocket.TextMessage, temp); err != nil {
+			model.Log.Warning("ClientMap[toId].Socket.WriteMessageErr %v", err)
+			return
+		}
+	}
+	//向发送者发送在线消息
+	tempSendFromFunc := func() {
+		temp, _ := json.Marshal(MsgFromUser{Status: status + 1, Uid: toId, Msg: msg})
+		if err := c.Socket.WriteMessage(websocket.TextMessage, temp); err != nil {
+			model.Log.Warning("c.Socket.WriteMessageErr", err)
+			return
+		}
+	}
+
+	if mod, err := model.SelectUserId(strconv.Itoa(toId)); err != nil {
+		//目标用户无效
+		model.Log.Warning("model.SelectUserId %v", err)
+		temp, _ := json.Marshal(MsgFromUser{Status: 0, Msg: "可能没这个人"})
 		c.Socket.WriteMessage(websocket.TextMessage, temp)
 		return
 	} else {
-		if _, err := model.SelectUserId(strconv.Itoa(toId)); err != nil { //cookie不正确
-			model.Log.Warning("model.SelectUserId %v", err)
-			temp, _ := json.Marshal(MsgFromUser{Status: 0, Msg: "可能没这个人"})
-			c.Socket.WriteMessage(websocket.TextMessage, temp)
-			return
+		//不在线
+		if ClientMap[toId] == nil {
+			//从内存判断是否好友
+			if fs[fromId][toId] == 1 || fs[toId][fromId] == 1 {
+				tempSaveFunc(0)
+				tempSendFromFunc()
+				model.Log.Info("[离线消息][%d][%s]对[%d][%s]说[%s]", fromId, c.UserInfo.UserName, mod.UserId, mod.UserName, msg)
+			} else {
+				//从数据库判断是否好友
+				if model.IsFriend(fromId, toId) {
+					//把是否好友信息记录到内存 下次就不用访问数据库了
+					fs[fromId] = make(map[int]int)
+					fs[fromId][toId] = 1
+					//存储离线消息
+					tempSaveFunc(0)
+					tempSendFromFunc()
+					model.Log.Info("[离线消息][%d][%s]对[%d][%s]说[%s]", fromId, c.UserInfo.UserName, mod.UserId, mod.UserName, msg)
+				} else {
+					//非好友不允许发送离线消息
+					temp, _ := json.Marshal(MsgFromUser{Status: 0, Msg: "对方不在线 只有好友能发送离线消息哟"})
+					c.Socket.WriteMessage(websocket.TextMessage, temp)
+					return
+					model.Log.Info("[离线消息被拒绝][%d][%s]对[%d][%s]说[%s]", fromId, c.UserInfo.UserName, mod.UserId, mod.UserName, msg)
+				}
+			}
 		} else {
-			msg := msgFromUser.Msg
-			//接收者
-			temp, err := json.Marshal(MsgFromUser{Status: msgFromUser.Status, Uid: fromId, Msg: msg})
-			if err != nil {
-				model.Log.Warning("model.SelectUserId %v", err)
-				return
+			//在线
+			if fs[fromId][toId] == 1 || fs[toId][fromId] == 1 {
+				tempSaveFunc(1)
+				tempSendFromFunc()
+				tempSendToFunc()
+				model.Log.Info("[%d][%s]对[%d][%s]说[%s]", fromId, c.UserInfo.UserName, mod.UserId, mod.UserName, msg)
+			} else {
+				if model.IsFriend(fromId, toId) {
+					//是好友 消息存到数据库
+					fs[fromId] = make(map[int]int)
+					fs[fromId][toId] = 1
+					tempSaveFunc(1)
+					tempSendFromFunc()
+					tempSendToFunc()
+				} else {
+					//发送消息
+					tempSendFromFunc()
+					tempSendToFunc()
+				}
+				model.Log.Info("[%d][%s]对[%d][%s]说[%s]", fromId, c.UserInfo.UserName, mod.UserId, mod.UserName, msg)
 			}
-			if err := ClientMap[toId].Socket.WriteMessage(websocket.TextMessage, temp); err != nil {
-				model.Log.Warning("ClientMap[toId].Socket.WriteMessageErr %v", err)
-				return
-			}
-			//发送者
-			temp, _ = json.Marshal(MsgFromUser{Status: (msgFromUser.Status + 1), Uid: toId, Msg: msg})
-			if err := c.Socket.WriteMessage(websocket.TextMessage, temp); err != nil {
-				model.Log.Warning("c.Socket.WriteMessageErr", err)
-				return
-			}
-			model.Log.Info("[%d][%s]对[%d][%s]说[%s]", fromId, c.UserInfo.UserName, toId, ClientMap[toId].UserInfo.UserName, msg)
 		}
 	}
+
 }
 
 //添加好友

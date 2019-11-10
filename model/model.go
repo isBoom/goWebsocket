@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"mylogger"
+	"strconv"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -39,7 +40,14 @@ type FriendsInfo struct {
 	UserHeadPortrait string `json:"userHeadPortrait" db:"userHeadPortrait"`
 }
 type OfflineMessage struct {
-	Id int
+	Id     int    `json:"id" db:"id"`
+	FromId int    `json:"fromId" db:"fromId"`
+	ToId   int    `json:"toId" db:"toId"`
+	Status int    `json:"status" db:"status"`
+	Msg    string `json:"msg" db:"msg"`
+	TimeD  int    `json:"timeD" db:"timeD"`
+	TimeS  string `json:"timeS" db:"timeS"`
+	IsRead int    `json:"isRead" db:"isRead"`
 }
 type FriendsList struct {
 	Id      int `json:"id" db:"id"`
@@ -91,7 +99,7 @@ func RegisteUser(userName string, userPassword string, userEmail string) (int, e
 	}
 	now := time.Now()
 	userHeadPortrait := fmt.Sprintf("https://xxxholic.top/img/userHeadPortrait/%d.jpg", rand.Intn(13))
-	userCreateDate := now.Format("2006-01-02_15:03:04")
+	userCreateDate := now.Format("2006-01-02_15:04:05")
 	res, err0 := DB.Exec("insert into userInfo(userName,userPassword,userEmail,userCreateDate,userHeadPortrait) VALUES(?,?,?,?,?)", userName, userPassword, userEmail, userCreateDate, userHeadPortrait)
 	if err0 != nil {
 		err0 = errors.New("添加用户失败错误")
@@ -168,8 +176,37 @@ func AddFriendList(smallId, bigId int) error {
 func SelectFriendslist(id int) ([]FriendsInfo, error) {
 	var err error
 	mod := make([]FriendsInfo, 0)
-	if err = DB.Select(&mod, "select userInfo.userId,userInfo.userName from friends left join userInfo on (friends.friendA=userInfo.userId or friends.friendB=userInfo.userId)  where friends.friendA=? or friends.friendB=?", id, id); err != nil {
+	if err = DB.Select(&mod, "SELECT userId ,userName,userHeadPortrait from friends INNER JOIN userInfo on (friendA=? and userInfo.userId=friendB) or (friendB=? and userInfo.userId=friendA)", id, id); err != nil {
 		return nil, err
 	}
 	return mod, nil
+}
+func SaveOfflineMessage(fromId, toId, status int, msg string, isRead int) error {
+	//timeD为int 比较方便
+	now := time.Now()
+	timeD, _ := strconv.Atoi(now.Format("20060102"))
+	timeS := now.Format("15:04:05")
+	var err error
+	if _, err = DB.Exec("INSERT INTO offlineMessage(fromId,toId,status,msg,timeD,timeS,isRead) VALUES(?,?,?,?,?,?,?)", fromId, toId, status, msg, timeD, timeS, isRead); err != nil {
+		return err
+	}
+	return nil
+}
+func SelectOfflineMessage(id int) ([]OfflineMessage, error) {
+	var err error
+	//timeD为int 比较方便
+	now := time.Now()
+	timeD, _ := strconv.Atoi(now.AddDate(0, 0, -3).Format("20060102"))
+	mod := make([]OfflineMessage, 0)
+	if err = DB.Select(&mod, "SELECT fromId ,toId,status,msg from offlineMessage where (fromId=? or toId =?) and (timeD > ? or isRead=0)", id, id, timeD); err != nil {
+		return nil, err
+	}
+	return mod, nil
+}
+func SetHasRead(id int) error {
+	var err error
+	if _, err := DB.Exec("UPDATE offlineMessage SET isRead = 1 where  toId =?", id); err != nil {
+		return err
+	}
+	return nil
 }
