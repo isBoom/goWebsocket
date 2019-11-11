@@ -89,11 +89,11 @@ func SelectUser(msg string) (*User, error) {
 func RegisteUser(userName string, userPassword string, userEmail string) (int, error) {
 	var err error
 	mod := &User{}
-	if err := DB.Get(mod, "select * from userInfo where userEmail=? limit 1", userEmail); err != nil {
+	if err := DB.Get(mod, "select * from userInfo where userEmail=? limit 1", userEmail); err == nil {
 		err = errors.New("该邮箱已存在")
 		return 0, err
 	}
-	if err = DB.Get(mod, "select * from userInfo where userName=? limit 1", userName); err != nil {
+	if err = DB.Get(mod, "select * from userInfo where userName=? limit 1", userName); err == nil {
 		err = errors.New("该昵称已存在")
 		return 0, err
 	}
@@ -204,7 +204,6 @@ func SelectOfflineMessage(id int) ([]OfflineMessage, error) {
 	return mod, nil
 }
 func SetHasRead(id int) error {
-	var err error
 	if _, err := DB.Exec("UPDATE offlineMessage SET isRead = 1 where  toId =?", id); err != nil {
 		return err
 	}
