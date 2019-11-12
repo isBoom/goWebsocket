@@ -22,13 +22,13 @@ type Client struct {
 	UserInfo UserSimpleData  `json:"userInfo"`
 }
 type UserSimpleData struct {
-	Uid              int    `json:"uid"`
+	UserId           int    `json:"userId"`
 	UserName         string `json:"userName"`
 	UserHeadPortrait string `json:"userHeadPortrait"`
 }
 
 type MsgFromUser struct {
-	Uid      int    `json:"uid"`
+	UserId   int    `json:"userId"`
 	Status   int    `json:"status"`
 	UserName string `json:"userName"`
 	Msg      string `json:"msg"`
@@ -48,6 +48,10 @@ type FriendsListToUser struct {
 	Msg    string              `json:"msg"`
 	User   []model.FriendsInfo `json:"user"`
 }
+type OfflineMessage struct {
+	Status int                    `json:"status"`
+	Data   []model.OfflineMessage `json:"data"`
+}
 
 //向新登录用户发送在线用户信息
 func SendUserOnlieData(c *Client) {
@@ -59,7 +63,7 @@ func SendUserOnlieData(c *Client) {
 
 	for _, data := range ClientMap {
 		msgToUserOnlie.User = append(msgToUserOnlie.User, UserSimpleData{
-			Uid:              data.UserInfo.Uid,
+			UserId:           data.UserInfo.UserId,
 			UserHeadPortrait: data.UserInfo.UserHeadPortrait,
 			UserName:         data.UserInfo.UserName,
 		})
@@ -80,7 +84,7 @@ func NewUserOnlie(c *Client) {
 	}
 	msgToUserOnlie.User = make([]UserSimpleData, 1)
 	msgToUserOnlie.User[0] = UserSimpleData{
-		Uid:              c.UserInfo.Uid,
+		UserId:           c.UserInfo.UserId,
 		UserHeadPortrait: c.UserInfo.UserHeadPortrait,
 		UserName:         c.UserInfo.UserName,
 	}
@@ -89,10 +93,10 @@ func NewUserOnlie(c *Client) {
 		model.Log.Warning("json.Marshal %v", err)
 		return
 	}
-	ClientMap[c.UserInfo.Uid] = c
+	ClientMap[c.UserInfo.UserId] = c
 	Message <- temp
 	// time.Sleep(time.Second)
-	model.Log.Info("(%d)%s来到了聊天室", c.UserInfo.Uid, c.UserInfo.UserName)
+	model.Log.Info("(%d)%s来到了聊天室", c.UserInfo.UserId, c.UserInfo.UserName)
 
 }
 
@@ -100,15 +104,15 @@ func NewUserOnlie(c *Client) {
 func UserLeave(c *Client) {
 	c.Socket.Close()
 	close(c.MsgCh)
-	delete(ClientMap, c.UserInfo.Uid)
-	temp, _ := json.Marshal(MsgFromUser{Status: 130, Uid: c.UserInfo.Uid, UserName: c.UserInfo.UserName})
+	delete(ClientMap, c.UserInfo.UserId)
+	temp, _ := json.Marshal(MsgFromUser{Status: 130, UserId: c.UserInfo.UserId, UserName: c.UserInfo.UserName})
 	Message <- temp
-	model.Log.Info("(%d)%s退出了聊天室", c.UserInfo.Uid, c.UserInfo.UserName)
+	model.Log.Info("(%d)%s退出了聊天室", c.UserInfo.UserId, c.UserInfo.UserName)
 }
 
 //发送所有好友列表
 func SendFriendsList(c *Client) {
-	mod, err := model.SelectFriendslist(c.UserInfo.Uid)
+	mod, err := model.SelectFriendslist(c.UserInfo.UserId)
 	if err != nil {
 		model.Log.Warning("model.SelectFriendslist %v", err)
 		return
@@ -127,37 +131,26 @@ func SendFriendsList(c *Client) {
 
 //发送离线消息
 func SendOfflineMessage(c *Client) {
-	mod, err := model.SelectOfflineMessage(c.UserInfo.Uid)
+	mod, err := model.SelectOfflineMessage(c.UserInfo.UserId)
 	if err != nil {
 		model.Log.Warning("model.SelectOfflineMessage %v", err)
 		return
 	} else if len(mod) != 0 {
-		for _, data := range mod {
-			if data.FromId == c.UserInfo.Uid {
-				temp, _ := json.Marshal(MsgFromUser{Status: data.Status + 1, Uid: data.ToId, Msg: data.Msg})
-				if err := c.Socket.WriteMessage(websocket.TextMessage, temp); err != nil {
-					model.Log.Warning("c.Socket.WriteMessageErr", err)
-					return
-				}
-			} else if data.ToId == c.UserInfo.Uid {
-				//接收者
-				temp, _ := json.Marshal(MsgFromUser{Status: data.Status, Uid: data.FromId, Msg: data.Msg})
-				if err := c.Socket.WriteMessage(websocket.TextMessage, temp); err != nil {
-					model.Log.Warning("c.Socket.WriteMessage %v", err)
-					return
-				}
-			}
+		temp, _ := json.Marshal(OfflineMessage{Status: 233, Data: mod})
+		if err := c.Socket.WriteMessage(websocket.TextMessage, temp); err != nil {
+			model.Log.Warning("c.Socket.WriteMessageErr", err)
+			return
 		}
 	}
 	//把离线消息置为已读
-	if err := model.SetHasRead(c.UserInfo.Uid); err != nil {
+	if err := model.SetHasRead(c.UserInfo.UserId); err != nil {
 		model.Log.Warning("mode.SetHasRead %v", err)
 	}
 }
 
 //发送请求
 func SendFriendsRequest(c *Client) {
-	mod, err := model.SelectFriendsRequest(c.UserInfo.Uid)
+	mod, err := model.SelectFriendsRequest(c.UserInfo.UserId)
 	if err != nil {
 		model.Log.Warning("model.SelectFriendsRequest %v", err)
 		return
@@ -184,7 +177,7 @@ func UserRegister(c *Client) {
 	SendFriendsRequest(c)
 	//两秒后向该用户发送所有离线消息列表 要不然前台渲染不完头像 出现头像不显示bug
 	go func() {
-		time.Sleep(time.Second * 2)
+		time.Sleep(time.Second)
 		SendOfflineMessage(c)
 	}()
 	//read
@@ -200,8 +193,8 @@ func UserRegister(c *Client) {
 			switch msgFromUser.Status {
 			case 200, 210: //普通群聊 文字/图片
 				msg := msgFromUser.Msg
-				temp, _ := json.Marshal(MsgFromUser{Status: msgFromUser.Status, Uid: c.UserInfo.Uid, UserName: c.UserInfo.UserName, Msg: msg})
-				model.Log.Info("(%d)%s:  %s", c.UserInfo.Uid, c.UserInfo.UserName, msg)
+				temp, _ := json.Marshal(MsgFromUser{Status: msgFromUser.Status, UserId: c.UserInfo.UserId, UserName: c.UserInfo.UserName, Msg: msg})
+				model.Log.Info("(%d)%s:  %s", c.UserInfo.UserId, c.UserInfo.UserName, msg)
 				Message <- temp
 			//更改头像
 			case 310:
@@ -267,7 +260,7 @@ func Websocket(res http.ResponseWriter, req *http.Request) {
 			MsgCh:  make(chan []byte),
 			Socket: conn,
 			UserInfo: UserSimpleData{
-				Uid:              person.UserId,
+				UserId:           person.UserId,
 				UserName:         person.UserName,
 				UserHeadPortrait: person.UserHeadPortrait,
 			}}
